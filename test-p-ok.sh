@@ -40,11 +40,18 @@ test_semicolon;this should be printed too
 # another comment
 a && b #final comment
 
+# Memory allocation check
 areallylongstringabcdefghjiklmnopqwerfasdfjkklsdasdfjklsadfjkldsa ||asdfjksdalfaskdnfkdsnfiaosdnfindifoandf
 
+# Semicolon check
 a &&b; c || d;
 
+# Semicolon inside of brackets
+(a;b);
+
 ((a;b) ||c|d>f);
+
+
 EOF
 
 cat >test.exp <<'EOF'
@@ -117,6 +124,12 @@ cat >test.exp <<'EOF'
   ||
     d
 # 17
+  (
+     a \
+   ;
+     b
+  )
+# 18
   (
      (
         a \
