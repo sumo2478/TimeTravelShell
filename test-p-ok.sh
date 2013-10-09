@@ -41,6 +41,10 @@ test_semicolon;this should be printed too
 a && b #final comment
 
 areallylongstringabcdefghjiklmnopqwerfasdfjkklsdasdfjklsadfjkldsa ||asdfjksdalfaskdnfkdsnfiaosdnfindifoandf
+
+a &&b; c || d;
+
+((a;b) ||c|d>f);
 EOF
 
 cat >test.exp <<'EOF'
@@ -104,6 +108,26 @@ cat >test.exp <<'EOF'
     areallylongstringabcdefghjiklmnopqwerfasdfjkklsdasdfjklsadfjkldsa \
   ||
     asdfjksdalfaskdnfkdsnfiaosdnfindifoandf
+# 15
+    a \
+  &&
+    b
+# 16
+    c \
+  ||
+    d
+# 17
+  (
+     (
+        a \
+      ;
+        b
+     ) \
+   ||
+       c \
+     |
+       d>f
+  )
 EOF
 
 ../timetrash -p test.sh >test.out 2>test.err || exit

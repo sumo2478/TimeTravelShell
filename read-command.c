@@ -84,8 +84,17 @@ void push_stack(Stack* stack_ref, command_t command)
     stack_ref->commands[stack_ref->top] = command;
 }
 
+bool stack_empty(Stack stack_ref)
+{
+    return (stack_ref.top < 0);
+}
+
 command_t pop_stack(Stack* stack_ref)
 {
+    if (stack_empty(*stack_ref)) {
+        error(1, 0, "%d: Can't pop empty stack", command_line );
+    }
+
     command_t val = stack_ref->commands[stack_ref->top];
     stack_ref->top--;
     return val;
@@ -93,13 +102,12 @@ command_t pop_stack(Stack* stack_ref)
 
 command_t top_stack(Stack stack_ref)
 {
+    if (stack_empty(stack_ref)) {
+        error(1, 0, "%d: Can't access top element of empty stack", command_line);
+    }
     return stack_ref.commands[stack_ref.top];
 }
 
-bool stack_empty(Stack stack_ref)
-{
-    return (stack_ref.top < 0);
-}
 
 Stack create_stack()
 {
@@ -137,12 +145,15 @@ int get_operator_score(command_t operator)
         case SUBSHELL_COMMAND:
             score = 0;
             break;
-        case OR_COMMAND:
-        case AND_COMMAND:
+        case SEQUENCE_COMMAND:
             score = 1;
             break;
-        case PIPE_COMMAND:
+        case OR_COMMAND:
+        case AND_COMMAND:
             score = 2;
+            break;
+        case PIPE_COMMAND:
+            score = 3;
             break;
         default:
             error(1, 0, "%d: Invalid command operator", command_line);
@@ -340,6 +351,13 @@ command_t create_subshell_command(int i)
     return new_command;
 }
 
+command_t create_sequence_command()
+{
+    command_t new_command = create_command();
+    new_command->type = SEQUENCE_COMMAND;
+    return new_command;
+}
+
 bool is_command(command_t last_command)
 {
     if (!last_command) {
@@ -371,7 +389,8 @@ command_t get_next_command(read_args read)
         remove_white_spaces(&i, read);
 
         if (i == ';') {
-            return NULL;
+            return create_sequence_command();
+            
         }
 
         if (i == '#')
@@ -427,12 +446,42 @@ command_t get_next_command(read_args read)
     }
 }
 
+// Function for debugging purposes TODO:Remove later
+void print_command_type(command_t var)
+{
+    switch(var->type)
+    {
+        case SUBSHELL_COMMAND:
+            printf("Subshell\n");
+            break;
+        case SEQUENCE_COMMAND:
+            printf("Sequence\n");
+            break;
+        case OR_COMMAND:
+            printf("Or command\n");
+            break;
+
+        case AND_COMMAND:
+            printf("And command\n");
+            break;
+
+        case PIPE_COMMAND:
+            printf("Pipe command\n");
+            break;
+        case SIMPLE_COMMAND:
+            printf("Simple command\n");
+            break;
+
+    }
+}
 command_t get_next_stream(read_args read, bool* valid_stream)
 {
     Stack operand_stack = create_stack();
     Stack operator_stack = create_stack();
 
     command_t curr_command;
+
+    bool in_subshell = false;
     
     while ((curr_command = get_next_command(read))) {
         // Set the last command
@@ -444,22 +493,28 @@ command_t get_next_stream(read_args read, bool* valid_stream)
         }
         else
         {
-            // If the operator stack is empty push it onto the operator stack
-            if (stack_empty(operator_stack)) 
-            {
-                push_stack(&operator_stack, curr_command);
+            // If it's a sequence command end getting new commands if we are not
+            // in a subshell
+            if (curr_command->type == SEQUENCE_COMMAND) {
+                if (!in_subshell) {
+                    break;
+                }
             }
-            else if (curr_command->type == SUBSHELL_COMMAND ) 
+            
+            // If the operator stack is empty push it onto the operator stack
+            if (curr_command->type == SUBSHELL_COMMAND ) 
             {
                 // Otherwise if the operator is a left bracket then push it onto the
                 // operator stack
                 char **w = curr_command->u.word;
                 if (**w == '(') {
+                    in_subshell = true;
                     push_stack(&operator_stack, curr_command);
                 }else{
                 // Otherwise if the operator is a right bracket then while we have
                 // not reached the left bracket pop the top of the operator stack
                 // and apply it to the two top elements of the operand stack
+                    in_subshell = false;
                     command_t operator_command = pop_stack(&operator_stack);
                     while (operator_command->type != SUBSHELL_COMMAND) {
                         command_t right_command = pop_stack(&operand_stack);
@@ -482,6 +537,10 @@ command_t get_next_stream(read_args read, bool* valid_stream)
                     operator_command->u.subshell_command = operand_command;
                     push_stack(&operand_stack, operator_command);
                 }
+            }
+            else if (stack_empty(operator_stack)) 
+            {
+                push_stack(&operator_stack, curr_command);
             }
             // Otherwise if the score of the operator is greater than the top of
             // the operator stack push it onto the operator stack
@@ -507,7 +566,6 @@ command_t get_next_stream(read_args read, bool* valid_stream)
             }
         }
     }
-
     // Return the top of the operand stack and if it has more than one
     // element or no element than there is an error same with if there is an
     // object inside of the operator stack
@@ -527,7 +585,6 @@ command_t get_next_stream(read_args read, bool* valid_stream)
     if (stack_empty(operand_stack)) {
         error(1, 0, "%d: Invalid command - too many operators", command_line);
     }
-
     command_t new_stream = pop_stack(&operand_stack);
 
     if (!stack_empty(operand_stack))

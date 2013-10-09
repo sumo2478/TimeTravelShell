@@ -1,3 +1,1 @@
-#help
-#another
-echo
+((a;b) ||c|d>f)
