@@ -1,1 +1,1 @@
-(echo hello) && (echo bob)
+(second sequence test ; echo middle of second sequence) && echo end of second sequence

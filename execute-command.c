@@ -74,7 +74,12 @@ void execute_subshell_command(command_t c, bool time_travel)
 
 void execute_sequence_command(command_t c, bool time_travel)
 {
-    error(1, 0, "Sequence command not implemented yet");
+    execute_command(c->u.command[0], time_travel);
+    execute_command(c->u.command[1], time_travel);
+
+    // Set the exit status to the status of the last command run TODO: Check to
+    // make sure this is correct
+    c->status = c->u.command[1]->status;
 }
 
 int

@@ -22,3 +22,7 @@ echo fifth or test || ls -rejk || echo end of fifth or test
 (echo first shell || echo second shell) && echo outside shell
 (echo first) && ( echo out)
 (echo first &&echo second || (ls -rejk && echo should not output))
+
+# Test SEQUENCE command
+echo first sequence; echo second sequence; echo final sequence
+(echo second sequence test ; echo middle of second sequence) && echo end of second sequence
