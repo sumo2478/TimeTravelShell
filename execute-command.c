@@ -4,6 +4,8 @@
 #include "command-internals.h"
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
+#include <stdlib.h>
 #include <error.h>
 
 void execute_simple(command_t c, bool time_travel)
@@ -43,7 +45,13 @@ void execute_and_command(command_t c, bool time_travel)
 
 void execute_or_command(command_t c, bool time_travel)
 {
-    error(1, 0, "Or command not implemented yet");
+    // Execute the first command
+    execute_command(c->u.command[0], time_travel);
+
+    // If that command fails then execute the second command
+    if (c->u.command[0]->status != 0) {
+        execute_command(c->u.command[1], time_travel);
+    }
 }
 
 void execute_pipe_command(command_t c, bool time_travel)
