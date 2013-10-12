@@ -32,15 +32,19 @@ void execute_simple(command_t c, bool time_travel)
 
 void execute_and_command(command_t c, bool time_travel)
 {
-
     // Execute the first command
     execute_command(c->u.command[0], time_travel);
 
-    // If that command succeeds then execute the second command
+    // If that command succeeds then execute the second command. Then set the
+    // exit status to that of the run command
     if (c->u.command[0]->status == 0) {
         execute_command(c->u.command[1], time_travel);
+        c->status = c->u.command[1]->status;
+    }else
+    {
+        c->status = c->u.command[0]->status;
     }
-
+    
 }
 
 void execute_or_command(command_t c, bool time_travel)
@@ -51,6 +55,9 @@ void execute_or_command(command_t c, bool time_travel)
     // If that command fails then execute the second command
     if (c->u.command[0]->status != 0) {
         execute_command(c->u.command[1], time_travel);
+        c->status = c->u.command[1]->status;
+    }else {
+        c->status = c->u.command[0]->status;
     }
 }
 
