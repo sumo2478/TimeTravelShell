@@ -1,5 +1,6 @@
 # Test simple command
 echo hello world!
+ls -rejk
 
 # Test AND command
 echo first and test && echo end of first and test
@@ -16,3 +17,8 @@ echo third or command || echo middle third or command || echo end of third or te
 ls -rejk || ls -rejk || echo end of fourth or test
 echo fifth or test || ls -rejk || echo end of fifth or test
 
+# Test SUBSHELL command
+(echo subshell command)
+(echo first shell || echo second shell) && echo outside shell
+(echo first) && ( echo out)
+(echo first &&echo second || (ls -rejk && echo should not output))

@@ -68,7 +68,8 @@ void execute_pipe_command(command_t c, bool time_travel)
 
 void execute_subshell_command(command_t c, bool time_travel)
 {
-    error(1, 0, "Subshell command not implemented yet");
+    execute_command(c->u.subshell_command, time_travel);
+    c->status = c->u.subshell_command->status;
 }
 
 void execute_sequence_command(command_t c, bool time_travel)

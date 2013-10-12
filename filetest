@@ -1,1 +1,1 @@
-ls -rejk || echo middle of second or command || echo end of second or test
+(echo hello) && (echo bob)
