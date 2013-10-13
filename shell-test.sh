@@ -2,7 +2,15 @@
 echo hello world!
 ls -rejk
 
-#One comment
+# Test input/output redirection
+echo this is an input test > n_file
+cat < n_file
+echo another message > n_file
+cat < n_file
+
+cat < n_file >other_file
+rm n_file
+rm other_file
 
 # Test AND command
 echo first and test && echo end of first and test

@@ -24,15 +24,22 @@ void setup_io(command_t c)
             error(1, 0, "Error reading file: %s", c->input);
         }
 
-        //dup2(fd_in, STD_IN);
+        dup2(fd_in, STD_IN);
+        close(fd_in);
 
     }
 
     // If the output is not null then set up a redirection for the output
     if (c->output != NULL) {
-        //int fd_out = open(c->input, O_WRONLY);
 
-        //dup2(fd_out, STD_OUT);
+        // Set the mode for user permissions
+        mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+
+        int fd_out = open(c->output, O_CREAT | O_WRONLY | O_TRUNC, mode);
+
+        dup2(fd_out, STD_OUT);
+
+        close(fd_out);
     }
 }
 
@@ -40,12 +47,11 @@ void execute_simple(command_t c, bool time_travel)
 {
     int status;
 
-    //setup_io(c);
-
     pid_t pid = fork();
 
     // If it's the child process then execute the simple command
     if (pid == 0) {
+        setup_io(c);
         execvp(c->u.word[0], c->u.word);
         error(1, 0, "Invalid command");
     }
