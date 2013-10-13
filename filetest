@@ -1,1 +1,8 @@
-(second sequence test ; echo middle of second sequence) && echo end of second sequence
+# First comment
+
+#second coment
+
+Final comment
+
+Another file#This shouldn't print
+But this should print

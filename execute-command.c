@@ -2,15 +2,46 @@
 
 #include "command.h"
 #include "command-internals.h"
-#include <unistd.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <error.h>
+
+#define STD_IN 0
+#define STD_OUT 1
+
+void setup_io(command_t c)
+{
+    // If the input is not null then set up a redirection for the input
+    if (c->input != NULL) {
+        int fd_in = open(c->input, O_RDONLY);
+
+        // If the file returned is less than 0 then return an error because the
+        // file was not read
+        if (fd_in < 0) {
+            error(1, 0, "Error reading file: %s", c->input);
+        }
+
+        //dup2(fd_in, STD_IN);
+
+    }
+
+    // If the output is not null then set up a redirection for the output
+    if (c->output != NULL) {
+        //int fd_out = open(c->input, O_WRONLY);
+
+        //dup2(fd_out, STD_OUT);
+    }
+}
 
 void execute_simple(command_t c, bool time_travel)
 {
     int status;
+
+    //setup_io(c);
+
     pid_t pid = fork();
 
     // If it's the child process then execute the simple command

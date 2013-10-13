@@ -2,6 +2,8 @@
 echo hello world!
 ls -rejk
 
+#One comment
+
 # Test AND command
 echo first and test && echo end of first and test
 echo second and test && echo end of second and test
@@ -26,3 +28,4 @@ echo fifth or test || ls -rejk || echo end of fifth or test
 # Test SEQUENCE command
 echo first sequence; echo second sequence; echo final sequence
 (echo second sequence test ; echo middle of second sequence) && echo end of second sequence
+

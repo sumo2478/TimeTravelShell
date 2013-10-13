@@ -372,9 +372,12 @@ bool is_command(command_t last_command)
 
 }
 
-command_t get_next_command(read_args read)
+// commmand_before is a boolean used for commentsthat determines whether this
+// comment is at the end of the command or the beginning
+command_t get_next_command(read_args read, bool command_before)
 {
     int i;
+
     // If there is a character in the temporary buffer use it otherwise get the
     // next character
     if (tmp_buf >= 0) {
@@ -383,6 +386,7 @@ command_t get_next_command(read_args read)
     }else{
         i = get_next_char(read);
     }
+
     for(;;) {
 
         // Skip any intial spaces
@@ -390,7 +394,6 @@ command_t get_next_command(read_args read)
 
         if (i == ';') {
             return create_sequence_command();
-            
         }
 
         if (i == '#')
@@ -400,7 +403,12 @@ command_t get_next_command(read_args read)
                 i = get_next_char(read);
             }
 
-            i = get_next_char(read);
+            // If there is no command before this comment then remove all new
+            // lines and white spaces after the comment
+            if (!command_before) {
+                remove_white_spaces_and_new_lines(&i, read);
+            }
+
             continue;
         }
 
@@ -413,8 +421,6 @@ command_t get_next_command(read_args read)
                 return NULL;
             }
         }
-
-        //remove_white_spaces(&i, read);
 
         // If i is less than zero then return
         if (i <=0) {
@@ -482,9 +488,11 @@ command_t get_next_stream(read_args read, bool* valid_stream)
     command_t curr_command;
 
     bool in_subshell = false;
+    bool command_before = false;
     
-    while ((curr_command = get_next_command(read))) {
+    while ((curr_command = get_next_command(read, command_before))) {
         // Set the last command
+        command_before = true;
         last_command = curr_command;
 
         if ((curr_command->type == SIMPLE_COMMAND)) 

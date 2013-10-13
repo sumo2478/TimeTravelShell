@@ -51,6 +51,14 @@ a &&b; c || d;
 
 ((a;b) ||c|d>f);
 
+# More tests with comments
+
+# This is a second comment
+
+Before this would cause error
+
+Another comment test#This shouldn't print
+But this should print
 
 EOF
 
@@ -141,6 +149,12 @@ cat >test.exp <<'EOF'
      |
        d>f
   )
+# 19
+  Before this would cause error
+# 20
+  Another comment test
+# 21
+  But this should print
 EOF
 
 ../timetrash -p test.sh >test.out 2>test.err || exit
