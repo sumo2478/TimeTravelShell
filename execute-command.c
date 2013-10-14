@@ -98,9 +98,84 @@ void execute_or_command(command_t c, bool time_travel)
     }
 }
 
+// If the exit code is greater than 256 then bring it down to 1 because Unix
+// doesn't support exit codes greater than 256
+void _convert_exit_code(int *code)
+{
+    if (*code > 256) {
+        *code = 1;
+    }
+}
+
 void execute_pipe_command(command_t c, bool time_travel)
 {
-    error(1, 0, "Pipe command not implemented yet");
+    // Create an array of two integers to store the pipe line file descriptors
+    // fd[0] = Read things in from this file descriptor
+    // fd[1] = Write things out from this file descriptor
+    int fd[2];
+
+    // Establish the pipe
+    pipe(fd);
+
+    pid_t pid = fork();
+
+    int status;
+
+    // If child process then close the read in portion of the pipe
+    // Redirect stdout to the write descriptor of the pipe
+    if (pid == 0) {
+        close(fd[0]);    
+
+        dup2(fd[1], STD_OUT);
+
+        execute_command(c->u.command[0], time_travel);
+
+        // Close the write portion of the pipe
+        close(fd[0]);
+
+        // Exit and return command 0's exit status
+        int exit_code = c->u.command[0]->status;
+        _convert_exit_code(&exit_code);
+        _exit(exit_code);
+
+    }else if (pid > 0) {
+
+        pid_t pid2 = fork();
+
+        if (pid2 == 0) {
+            // Close the write portion of the pipe
+            close(fd[1]);
+
+            // Redirect stdin to the read descriptor of the pipe
+            dup2(fd[0], STD_IN);
+
+            execute_command(c->u.command[1], time_travel);
+
+            close(fd[0]);
+
+            // Exit and return command 1's exit status
+            int exit_code = c->u.command[1]->status;
+            _convert_exit_code(&exit_code);
+            _exit(exit_code);
+
+        }else if (pid2 > 0) {
+
+            // Close the pipe
+            close(fd[0]);
+            close(fd[1]);
+
+            waitpid(pid2, &status, 0);
+
+            c->status = status;
+        }else
+        {
+            error(1, 0, "Forked process failed");
+        }
+        
+    }else{
+        error(1, 0, "Forked process failed");
+    }
+
 }
 
 void execute_subshell_command(command_t c, bool time_travel)

@@ -9,6 +9,18 @@ echo another message > n_file
 cat < n_file
 
 cat < n_file >other_file
+
+# Test Pipe command
+cat n_file | cat
+who | sort > other_file
+cat other_file
+sort < other_file | cat > n_file
+cat n_file
+
+(cat n_file | cat) && echo first pipe test
+(ls -rexfdjk | cat ) && echo second pipe test
+(cat n_file | ls -rexfjkds) && echo third pipe test
+
 rm n_file
 rm other_file
 

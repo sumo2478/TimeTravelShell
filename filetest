@@ -1,4 +1,0 @@
-echo this is an input test > n_file
-cat < n_file
-echo another message > n_file
-cat < n_file
