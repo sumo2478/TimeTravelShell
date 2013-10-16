@@ -24,9 +24,11 @@ void setup_io(command_t c)
             error(1, 0, "Error reading file: %s", c->input);
         }
 
+        // Set up the redirection
         if (dup2(fd_in, STD_IN) < 0)
             error(1, 0, "Error redirecting stdin");
 
+        // Close the file when done
         if (close(fd_in) < 0)
             error(1, 0, "Error closing file");
 
@@ -116,7 +118,8 @@ void execute_pipe_command(command_t c, bool time_travel)
     int fd[2];
 
     // Establish the pipe
-    pipe(fd);
+    if (pipe(fd) != 0)
+        error(1, 0, "Failed to create pipe");
 
     pid_t pid = fork();
 
@@ -128,7 +131,8 @@ void execute_pipe_command(command_t c, bool time_travel)
         close(fd[0]);    
 
         // Redirect the write section of the pipe to standard out
-        dup2(fd[1], STD_OUT);
+        if (dup2(fd[1], STD_OUT) < 0)
+            error(1, 0, "Failed to redirect write to stdout");
 
         execute_command(c->u.command[0], time_travel);
 
@@ -147,7 +151,8 @@ void execute_pipe_command(command_t c, bool time_travel)
             close(fd[1]);
 
             // Redirect stdin to the read descriptor of the pipe
-            dup2(fd[0], STD_IN);
+            if (dup2(fd[0], STD_IN) < 0)
+                error(1, 0, "Failed to redirect stdin");
 
             execute_command(c->u.command[1], time_travel);
 
@@ -162,9 +167,10 @@ void execute_pipe_command(command_t c, bool time_travel)
             close(fd[0]);
             close(fd[1]);
 
-            waitpid(pid2, &status, 0);
+            if (waitpid(pid2, &status, 0) < 0)
+                abort();
 
-            c->status = status;
+            c->status = WEXITSTATUS(status);
         }else
         {
             error(1, 0, "Forked process failed");
