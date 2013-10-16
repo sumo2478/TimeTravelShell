@@ -24,8 +24,11 @@ void setup_io(command_t c)
             error(1, 0, "Error reading file: %s", c->input);
         }
 
-        dup2(fd_in, STD_IN);
-        close(fd_in);
+        if (dup2(fd_in, STD_IN) < 0)
+            error(1, 0, "Error redirecting stdin");
+
+        if (close(fd_in) < 0)
+            error(1, 0, "Error closing file");
 
     }
 
@@ -36,10 +39,15 @@ void setup_io(command_t c)
         mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 
         int fd_out = open(c->output, O_CREAT | O_WRONLY | O_TRUNC, mode);
+        
+        if (fd_out < 0)
+            error(1, 0, "Error reading file: %s", c->output);
 
-        dup2(fd_out, STD_OUT);
+        if (dup2(fd_out, STD_OUT) < 0)
+            error(1, 0, "Error redirecting stdout");
 
-        close(fd_out);
+        if (close(fd_out) < 0)
+            error(1, 0, "Error closing file");
     }
 }
 
@@ -58,8 +66,10 @@ void execute_simple(command_t c, bool time_travel)
     // If it's the parent process then wait for the child process to execute and
     // then set the commands status to the exit status
     else if (pid > 0) {
-        waitpid(pid, &status, 0);
-        c->status = status;
+        if (waitpid(pid, &status, 0) < 0)
+            abort();
+
+        c->status = WEXITSTATUS(status);
     }
     // Otherwise return an error because the fork got an error
     else {
@@ -98,15 +108,6 @@ void execute_or_command(command_t c, bool time_travel)
     }
 }
 
-// If the exit code is greater than 256 then bring it down to 1 because Unix
-// doesn't support exit codes greater than 256
-void _convert_exit_code(int *code)
-{
-    if (*code > 256) {
-        *code = 1;
-    }
-}
-
 void execute_pipe_command(command_t c, bool time_travel)
 {
     // Create an array of two integers to store the pipe line file descriptors
@@ -126,17 +127,16 @@ void execute_pipe_command(command_t c, bool time_travel)
     if (pid == 0) {
         close(fd[0]);    
 
+        // Redirect the write section of the pipe to standard out
         dup2(fd[1], STD_OUT);
 
         execute_command(c->u.command[0], time_travel);
 
         // Close the write portion of the pipe
-        close(fd[0]);
+        close(fd[1]);
 
         // Exit and return command 0's exit status
-        int exit_code = c->u.command[0]->status;
-        _convert_exit_code(&exit_code);
-        _exit(exit_code);
+        _exit(c->u.command[0]->status);
 
     }else if (pid > 0) {
 
@@ -154,9 +154,7 @@ void execute_pipe_command(command_t c, bool time_travel)
             close(fd[0]);
 
             // Exit and return command 1's exit status
-            int exit_code = c->u.command[1]->status;
-            _convert_exit_code(&exit_code);
-            _exit(exit_code);
+            _exit(c->u.command[1]->status);
 
         }else if (pid2 > 0) {
 
