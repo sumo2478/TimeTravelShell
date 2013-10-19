@@ -503,10 +503,8 @@ command_t get_next_stream(read_args read, bool* valid_stream)
         {
             // If it's a sequence command end getting new commands if we are not
             // in a subshell
-            if (curr_command->type == SEQUENCE_COMMAND) {
-                if (!in_subshell) {
-                    break;
-                }
+            if (curr_command->type == SEQUENCE_COMMAND && !in_subshell) {
+                break;
             }
             
             // If the operator stack is empty push it onto the operator stack
