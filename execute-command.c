@@ -14,24 +14,6 @@
 #define STD_IN 0
 #define STD_OUT 1
 
-// Structure that contains a list of out files
-typedef struct
-{
-    int m_size;
-    int m_pos;
-    char **m_arr;
-}List;
-
-List* out_files;
-
-List* create_list()
-{
-    List new_list;
-    new_list.m_size = 5;
-    new_list.m_pos = 0;
-    new_list.m_arr = checked_malloc(5*sizeof(char*));
-    return &new_list;
-}
 
 void setup_io(command_t c)
 {
@@ -227,27 +209,135 @@ command_status (command_t c)
 
 
 // Time Travel Commands
-void execute_time_travel(command_stream_t command_stream)
+
+// Structure that contains a list of out files
+
+typedef struct
 {
-    // If the outfiles list hasn't been created yet then create it
-    if (out_files == NULL) {
-        out_files = create_list();
+    pid_t pid;
+    char* name;
+}File;
+
+typedef struct
+{
+    int m_size;
+    int m_pos;
+    File* files;
+}List;
+
+File create_file(pid_t pid, char* name)
+{
+    File new_file;
+    new_file.name = name;
+    new_file.pid = pid;
+    return new_file;
+}
+
+List create_list()
+{
+    List new_list;
+    new_list.m_size = 5;
+    new_list.m_pos = 0;
+    new_list.files = checked_malloc(5*sizeof(*new_list.files));
+    return new_list;
+}
+
+void increase_list_size(List* list)
+{
+    list->m_size*=2;
+    checked_realloc(list->files, (list->m_size*sizeof(File)));
+}
+
+void insert_list(List* list, File file)
+{
+    if (list->m_pos > list->m_size) {
+        increase_list_size(list);
     }
 
-    // Search through the outfiles list and if the out file for this command is
-    // not located in that array then execute the command
-    // Otherwise create a fork and execute 
-    pid_t pid = fork();
+    list->files[list->m_pos] = file;
+    list->m_pos++;
+}
 
-    if (pid == 0) {
-        execute_command(c);
-        _exit(0);
-    }else if (pid > 0) {
-        return; 
+void remove_from_list(List* list, int index)
+{
+    if (list->m_pos == 0) {
+        error(1, 0, "Error list already empty");
+    }
+
+    list->m_pos--;
+    list->files[index] = list->files[list->m_pos];
+}
+
+bool string_equals(char* a, char* b)
+{
+    while (*a != '\0' && *b != '\0') {
+        if (*a != *b) {
+            return false;
+        }
+
+        a++;
+        b++;
+    }
+
+    if (*a != *b) {
+        return false;
     }else
     {
-        error(1, 0, "Failed to fork");
+        return true;
     }
+}
+
+int file_in_list(List list, char* file_name)
+{
+    int i;
+    for (i = 0; i < list.m_pos; i++) {
+        if (string_equals(list.files[i].name, file_name)) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+void execute_time_travel(command_stream_t command_stream)
+{
+    // Initialize list for output file dependencies
+    List out_files = create_list();
+    command_t command;
+
+    // For each command in the command stream
+    while ((command = read_command_stream(command_stream))) {
+        // Create a fork
+        pid_t pid = fork();
+
+        // If it is the child process then check inside of the outfiles
+        if (pid == 0) {
+            // If it's input file is equal to any of the output files in that list then
+            // wait for whatever process is associated to that file before executing
+            // itself
+            int index = -1;
+
+            if (command->input != NULL) {
+                index = file_in_list(out_files, command->input);
+            }
+
+            if (index > 0) {
+                // When it's done waiting remove that file from the list and exit with it's
+                // exit status
+                int status;
+                pid_t wait_pid = out_files.files[index].pid;
+                waitpid(wait_pid, &status, 0);
+                remove_from_list(&out_files, index);
+            }
+            // Otherwise execute the process
+
+            execute_command(command);
+            _exit(command->status);
+        }
+    // If we are the parent process then if the child has an output file add the
+    // file name along with the process id to the list of output files
+    }
+
 }
 
 void
