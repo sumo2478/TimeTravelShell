@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <error.h>
 
@@ -301,14 +302,16 @@ int file_in_list(List list, char* file_name)
 
 void execute_time_travel(command_stream_t command_stream)
 {
+
     // Initialize list for output file dependencies
     List out_files = create_list();
     command_t command;
+    pid_t pid;
 
     // For each command in the command stream
     while ((command = read_command_stream(command_stream))) {
         // Create a fork
-        pid_t pid = fork();
+        pid = fork();
 
         // If it is the child process then check inside of the outfiles
         if (pid == 0) {
@@ -333,9 +336,36 @@ void execute_time_travel(command_stream_t command_stream)
 
             execute_command(command);
             _exit(command->status);
+        }else if (pid > 0) {
+            // If we are the parent process then if the child has an output file add the
+            // file name along with the process id to the list of output files
+
+            pid_t parent = fork();
+            if (parent == 0) {
+                int index = -1; // Stores the index of the file we just added
+
+                if (command->output != NULL) {
+                    File new_file = create_file(pid, command->output); 
+                    index = out_files.m_pos;
+                    insert_list(&out_files, new_file); 
+                }
+
+                // Child process that will wait for the process we stored to
+                // finish and then remove it from the outfiles list
+                waitpid(pid, NULL, 0);
+
+                if (index > 0) 
+                    remove_from_list(&out_files, index);
+
+                _exit(0);
+            }else if (parent < 0) {
+                error(1, 0, "Failed to fork process");
+            }
+                 
+        }else
+        {
+            error(1, 0, "Failed to fork process");
         }
-    // If we are the parent process then if the child has an output file add the
-    // file name along with the process id to the list of output files
     }
 
 }
