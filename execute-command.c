@@ -211,163 +211,323 @@ command_status (command_t c)
 
 // Time Travel Commands
 
-// Structure that contains a list of out files
+// Structure for a list to store the commands
+typedef struct Node Node;
+typedef struct FileArray FileArray;
 
+// Array that stores a list of file names
+struct FileArray
+{
+    int pos;
+    int size;
+    char** files;
+};
+
+// Structure to contain each commands description
+struct Node
+{
+    Node* prev_node;
+    Node* next_node;
+
+    pid_t pid; // Pid for the command executed
+    command_t c;
+
+    FileArray* out_files; // Command's output files
+    FileArray* in_files; // Command's input files
+
+    bool executed; // Boolean that determines whether the command has been executed yet
+};
+
+// Linked list to store all the nodes we desire
 typedef struct
 {
-    pid_t pid;
-    char* name;
-}File;
-
-typedef struct
-{
-    int m_size;
-    int m_pos;
-    File* files;
+    int counter; // Stores the number of items in the list
+    Node* begin;
+    Node* end;
 }List;
 
-File create_file(pid_t pid, char* name)
+FileArray* createFileArray()
 {
-    File new_file;
-    new_file.name = name;
-    new_file.pid = pid;
+    FileArray* new_file = checked_malloc(sizeof(FileArray));
+    new_file->pos = 0;
+    new_file->size = 5;
+    new_file->files = checked_malloc(5*sizeof(char*));
     return new_file;
+}
+
+void increase_file_array(FileArray* n)
+{
+    n->size *=2;
+    n->files = checked_malloc(n->size*sizeof(*n->files));
+}
+
+void insert_file_array(FileArray* array, char* word)
+{
+    if (array->pos >= array->size) {
+        increase_file_array(array);
+    }
+
+    array->files[array->pos] = word;
+    array->pos++;
 }
 
 List create_list()
 {
     List new_list;
-    new_list.m_size = 5;
-    new_list.m_pos = 0;
-    new_list.files = checked_malloc(5*sizeof(*new_list.files));
+    new_list.begin = NULL;
+    new_list.end = NULL;
+    new_list.counter = 0;
     return new_list;
 }
 
-void increase_list_size(List* list)
+Node* create_node(command_t c)
 {
-    list->m_size*=2;
-    checked_realloc(list->files, (list->m_size*sizeof(File)));
+    Node* new_node = checked_malloc(sizeof(Node));
+    new_node->prev_node = NULL;
+    new_node->next_node = NULL;
+    new_node->pid = -1;
+    new_node->c = c;
+    
+    new_node->executed = false;
+
+    // Setup the file arrays
+    new_node->out_files = createFileArray();
+    new_node->in_files = createFileArray();
+
+    return new_node;
+
 }
 
-void insert_list(List* list, File file)
+void free_node(Node* n)
 {
-    if (list->m_pos > list->m_size) {
-        increase_list_size(list);
+    free(n->out_files->files);
+    free(n->out_files);
+    free(n->in_files->files);
+    free(n->in_files);
+    free(n);
+    n = NULL;
+}
+
+// Removes the node with the given pid from the list
+void list_remove(List* list, pid_t pid)
+{
+    Node* iterator = list->begin;
+    while (iterator != NULL) {
+        if (iterator->pid == pid) {
+            list->counter--;
+
+            // If we are the beginning node then set the next node to the
+            // beginning of the list
+            if (iterator == list->begin) {
+                list->begin = iterator->next_node;
+                free_node(iterator);
+                iterator = list->begin;
+                return;
+            }
+            // Otherwise if we are the end node the set the previous node to the
+            // end of the list
+            else if (iterator == list->end) {
+                list->end = iterator->prev_node;
+                free_node(iterator);
+                return; // We can return because we are at the end of the iteration
+            }
+            // Otherwise set the previous node to the next node and the next
+            // node to the previous node
+            else
+            {
+                iterator->prev_node->next_node = iterator->next_node;
+                iterator->next_node->prev_node = iterator->prev_node;
+
+                Node *tmp = iterator->next_node;
+
+                free_node(iterator);
+                iterator = tmp;
+                return;
+            }
+        }else
+        {
+            iterator = iterator->next_node;
+        }
+
     }
-
-    list->files[list->m_pos] = file;
-    list->m_pos++;
 }
 
-void remove_from_list(List* list, int index)
+void list_insert(List* list, Node* node)
 {
-    if (list->m_pos == 0) {
-        error(1, 0, "Error list already empty");
+    list->counter++;
+
+    // If the list is empty then set the beginning and end node to the node
+    if (list->begin == NULL) {
+        list->begin = node;
+        list->end = node;
+    }else
+    {
+        // Set the next node of the end node to this node and then set the end of
+        // the list to this node
+        list->end->next_node = node;
+
+        // Set the previous node of this node the the old end node
+        node->prev_node = list->end;
+
+        list->end = node;
     }
-
-    list->m_pos--;
-    list->files[index] = list->files[list->m_pos];
 }
 
-bool string_equals(char* a, char* b)
+void determine_dependencies(command_t command, Node* n)
 {
-    while (*a != '\0' && *b != '\0') {
-        if (*a != *b) {
+    // Code for determining the input
+    switch(command->type)
+    {
+        case SIMPLE_COMMAND:
+            if (command->input != NULL)
+                insert_file_array(n->in_files, command->input);
+            if (command->output != NULL)
+                insert_file_array(n->out_files, command->output);
+            break;
+
+        case AND_COMMAND:
+        case OR_COMMAND:
+        case PIPE_COMMAND:
+        case SEQUENCE_COMMAND:
+            determine_dependencies(command->u.command[0], n);
+            determine_dependencies(command->u.command[1], n);
+            break;
+
+        case SUBSHELL_COMMAND:
+            determine_dependencies(command->u.subshell_command, n);
+            break;
+    }
+}
+
+// Compares two character strings
+bool match_word(char* w1, char* w2)
+{
+    char* iter1 = w1;
+    char* iter2 = w2;
+
+    while (*iter1 != '\0' && *iter2 != '\0') {
+        if (*iter1 != *iter2) {
             return false;
         }
 
-        a++;
-        b++;
+        iter1++;
+        iter2++;
     }
 
-    if (*a != *b) {
+    if (*iter1 != *iter2)
         return false;
-    }else
-    {
+    else
         return true;
-    }
 }
 
-int file_in_list(List list, char* file_name)
+// Returns whether any of the words in in_files is matched in any of the files
+// in out_files
+bool compare_file_arrays(FileArray* in_files, FileArray* out_files)
 {
-    int i;
-    for (i = 0; i < list.m_pos; i++) {
-        if (string_equals(list.files[i].name, file_name)) {
-            return i;
+    int i, j;
+
+    for (i = 0; i < in_files->pos; i++) {
+        for (j = 0; j < out_files->pos; j++) {
+            if (match_word(in_files->files[i], out_files->files[j])) {
+                return true;
+            }
         }
     }
 
-    return -1;
+    return false;
 }
 
+bool no_dependencies(Node* n, int index)
+{
+    Node* iter = n->prev_node;
+
+    // If the node does not have input files then return true
+    if (n->in_files == NULL) {
+        return true;
+    }
+
+    // For each of the previous nodes in the list
+    //while (iter != NULL) {
+    for(; index > 0; index--){
+        // Compare all the outfiles of that previous node with the infiles of this
+        // current node
+        if (compare_file_arrays(n->in_files, iter->out_files)) {
+            // If there is a match then return false
+            return false;
+        }
+
+        iter = iter->prev_node;
+    }
+
+    return true;
+}
+
+
+// Timetravel commands
 void execute_time_travel(command_stream_t command_stream)
 {
-
-    // Initialize list for output file dependencies
-    List out_files = create_list();
     command_t command;
-    pid_t pid;
+
+    // Initialize array for all commands
+    List command_list = create_list();
 
     // For each command in the command stream
     while ((command = read_command_stream(command_stream))) {
-        // Create a fork
-        pid = fork();
+        // Initialize a new node for the command
+        Node* new_node = create_node(command);
 
-        // If it is the child process then check inside of the outfiles
-        if (pid == 0) {
-            // If it's input file is equal to any of the output files in that list then
-            // wait for whatever process is associated to that file before executing
-            // itself
-            int index = -1;
+        // Determine all of its dependencies and add it to the node
+        // For dependencies need to determine input files and output files
+        determine_dependencies(command, new_node);
 
-            if (command->input != NULL) {
-                index = file_in_list(out_files, command->input);
-            }
-
-            if (index > 0) {
-                // When it's done waiting remove that file from the list and exit with it's
-                // exit status
-                int status;
-                pid_t wait_pid = out_files.files[index].pid;
-                waitpid(wait_pid, &status, 0);
-                remove_from_list(&out_files, index);
-            }
-            // Otherwise execute the process
-
-            execute_command(command);
-            _exit(command->status);
-        }else if (pid > 0) {
-            // If we are the parent process then if the child has an output file add the
-            // file name along with the process id to the list of output files
-
-            pid_t parent = fork();
-            if (parent == 0) {
-                int index = -1; // Stores the index of the file we just added
-
-                if (command->output != NULL) {
-                    File new_file = create_file(pid, command->output); 
-                    index = out_files.m_pos;
-                    insert_list(&out_files, new_file); 
-                }
-
-                // Child process that will wait for the process we stored to
-                // finish and then remove it from the outfiles list
-                waitpid(pid, NULL, 0);
-
-                if (index > 0) 
-                    remove_from_list(&out_files, index);
-
-                _exit(0);
-            }else if (parent < 0) {
-                error(1, 0, "Failed to fork process");
-            }
-                 
-        }else
-        {
-            error(1, 0, "Failed to fork process");
-        }
+        // Push the new command node on to the array
+        list_insert(&command_list, new_node);
     }
 
+    // While there are still commands in the array
+    while (command_list.counter > 0) {
+        Node* iter = command_list.begin;
+
+        int i;
+        // For each command in the array
+        for (i = 0; i < command_list.counter; i++)
+        {
+            // Check to make sure none if it's input files is equal to any of
+            // the output files of the previous commands
+            // If it doesn't depend on any of the previous commands then we
+            // should create a fork
+            if (no_dependencies(iter, i) && !iter->executed) {
+                iter->executed = true;
+
+                pid_t pid = fork();
+
+                // If we are in the child process
+                if (pid == 0) {
+                    // Execute the command
+                    execute_command(iter->c);
+
+                    // Exit the process
+                    _exit(0);
+                }
+                // If we are the parent set that positions pid to the pid of the
+                // process just created
+                else if (pid > 0) {
+                    iter->pid = pid;
+                }else
+                {
+                    error(1, 0, "Forked process Failed");
+                }
+            }
+
+            iter = iter->next_node;    
+        }
+
+        // Wait for any process to finish
+        pid_t finished_pid = waitpid(-1, NULL, 0);
+
+        // Find that process in the array and remove it from the array
+        list_remove(&command_list, finished_pid);
+    }
 }
 
 void
