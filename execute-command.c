@@ -15,7 +15,7 @@
 #define STD_IN 0
 #define STD_OUT 1
 
-
+// Sets up the input and output file redirections for a command
 void setup_io(command_t c)
 {
     // If the input is not null then set up a redirection for the input
@@ -57,6 +57,10 @@ void setup_io(command_t c)
     }
 }
 
+//===========================================================================
+// Command Execution Functions
+//===========================================================================
+
 void execute_simple(command_t c)
 {
     int status;
@@ -78,9 +82,8 @@ void execute_simple(command_t c)
         c->status = WEXITSTATUS(status);
     }
     // Otherwise return an error because the fork got an error
-    else {
+    else 
         error(1, 0, "Forked process failed");
-    }
 }
 
 void execute_and_command(command_t c)
@@ -94,10 +97,7 @@ void execute_and_command(command_t c)
         execute_command(c->u.command[1]);
         c->status = c->u.command[1]->status;
     }else
-    {
         c->status = c->u.command[0]->status;
-    }
-    
 }
 
 void execute_or_command(command_t c)
@@ -176,14 +176,10 @@ void execute_pipe_command(command_t c)
 
             c->status = WEXITSTATUS(status);
         }else
-        {
             error(1, 0, "Forked process failed");
-        }
         
-    }else{
+    }else
         error(1, 0, "Forked process failed");
-    }
-
 }
 
 void execute_subshell_command(command_t c)
@@ -195,13 +191,12 @@ void execute_subshell_command(command_t c)
         setup_io(c);
         execute_command(c->u.subshell_command);
         _exit(c->u.subshell_command->status);
-    }else if (pid > 0) {
+    }else if (pid > 0) 
         waitpid(pid, &status, 0);
-    }else
+    else
         error(1, 0, "Forked process failed");
 
     c->status = WEXITSTATUS(status);
-
 }
 
 void execute_sequence_command(command_t c)
@@ -220,14 +215,15 @@ command_status (command_t c)
     return c->status;
 }
 
-
-// Time Travel Commands
+//===========================================================================
+// Time Travel Functions
+//===========================================================================
 
 // Structure for a list to store the commands
 typedef struct Node Node;
 typedef struct FileArray FileArray;
 
-// Array that stores a list of file names
+// Data structre to store a list of file names
 struct FileArray
 {
     int pos;
@@ -235,7 +231,8 @@ struct FileArray
     char** files;
 };
 
-// Structure to contain each commands description
+// Data structe that represents a command node
+// Used as a node in a doubly linked list
 struct Node
 {
     Node* prev_node;
@@ -258,6 +255,10 @@ typedef struct
     Node* end;
 }List;
 
+//===========================================================================
+// File Array Functions
+//===========================================================================
+
 FileArray* createFileArray()
 {
     FileArray* new_file = checked_malloc(sizeof(FileArray));
@@ -276,13 +277,16 @@ void increase_file_array(FileArray* n)
 
 void insert_file_array(FileArray* array, char* word)
 {
-    if (array->pos >= array->size) {
+    if (array->pos >= array->size) 
         increase_file_array(array);
-    }
 
     array->files[array->pos] = word;
     array->pos++;
 }
+
+//===========================================================================
+// List Helper Functions
+//===========================================================================
 
 List create_list()
 {
@@ -386,6 +390,10 @@ void list_insert(List* list, Node* node)
     }
 }
 
+//===========================================================================
+// Dependency Functions
+//===========================================================================
+
 void insert_dependencies(command_t command, Node* n)
 {
     if (command->input != NULL)
@@ -456,13 +464,10 @@ bool compare_file_arrays(FileArray* in_files, FileArray* out_files)
 {
     int i, j;
 
-    for (i = 0; i < in_files->pos; i++) {
-        for (j = 0; j < out_files->pos; j++) {
-            if (match_word(in_files->files[i], out_files->files[j])) {
+    for (i = 0; i < in_files->pos; i++) 
+        for (j = 0; j < out_files->pos; j++) 
+            if (match_word(in_files->files[i], out_files->files[j]))
                 return true;
-            }
-        }
-    }
 
     return false;
 }
@@ -477,7 +482,6 @@ bool no_dependencies(Node* n, int index)
     }
 
     // For each of the previous nodes in the list
-    //while (iter != NULL) {
     for(; index > 0; index--){
         // Compare all the outfiles of that previous node with the infiles of this
         // current node
@@ -492,8 +496,6 @@ bool no_dependencies(Node* n, int index)
     return true;
 }
 
-
-// Timetravel commands
 void execute_time_travel(command_stream_t command_stream)
 {
     command_t command;
@@ -522,10 +524,10 @@ void execute_time_travel(command_stream_t command_stream)
         // For each command in the array
         for (i = 0; i < command_list.counter; i++)
         {
-            // Check to make sure none if it's input files is equal to any of
+            // Check to make sure none of it's input files is equal to any of
             // the output files of the previous commands
             // If it doesn't depend on any of the previous commands then we
-            // should create a fork
+            // should create a fork and execute the process
             if (no_dependencies(iter, i) && !iter->executed) {
                 iter->executed = true;
 
@@ -544,9 +546,7 @@ void execute_time_travel(command_stream_t command_stream)
                 else if (pid > 0) {
                     iter->pid = pid;
                 }else
-                {
                     error(1, 0, "Forked process Failed");
-                }
             }
 
             iter = iter->next_node;    
