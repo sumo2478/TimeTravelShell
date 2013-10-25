@@ -1,34 +1,27 @@
 // UCLA CS 111 Lab 1 command reading
 
+#include "alloc.h"
 #include "command.h"
 #include "command-internals.h"
-#include "alloc.h"
 #include <stdlib.h>
 #include <stdio.h>
-
 #include <error.h>
 
 int tmp_buf; // Used to store a popped element that we need later from the stream
 command_t last_command; // Used to store a previous command for if there is an operator followed by a new line
-int command_line;
+int command_line; // Stores the current command number we are on
 
-// Function that creates a new command
-command_t create_command()
-{
-    command_t new_command = checked_malloc(sizeof(*new_command));
-    new_command->status = -1;
-    new_command->input = NULL;
-    new_command->output = NULL;
-    return new_command;
-}
+//===========================================================================
+// Command Helper Functions
+//===========================================================================
 
-// Stores the command stream
+// Data structure for the command stream
 struct command_stream
 {
-    command_t* commands;
-    int size;
-    int counter;
-    int read_counter;
+    command_t* commands; // Pointer to the first command
+    int size; // Size of the command stream in terms of memory
+    int counter; // The current number of commands stored in the stream
+    int read_counter; // The current counter for the commands that have been read
 };
 
 command_stream_t create_command_stream()
@@ -52,14 +45,17 @@ void increase_command_stream_size(command_stream_t stream)
     stream->commands = tmp_array;
 }
 
-// Stores the read arguments for the file
+// Data structure for storing the read arguments used to read from the file
 typedef struct
 {
     int (*get_next_byte) (void*);
     void *get_next_byte_argument;
 }read_args;
 
-// Stack data structure and functions
+//===========================================================================
+// Stack Data structure and Functions
+//===========================================================================
+
 typedef struct
 {
     int top; // Stores the index for the top of the stack
@@ -108,7 +104,6 @@ command_t top_stack(Stack stack_ref)
     return stack_ref.commands[stack_ref.top];
 }
 
-
 Stack create_stack()
 {
     Stack new_stack;
@@ -118,6 +113,28 @@ Stack create_stack()
     return new_stack;
 }
 
+//===========================================================================
+// Word array helper functions
+//===========================================================================
+
+void increase_word_size(char** c, int *word_indexes)
+{
+    *word_indexes *= 2;
+    *c = checked_realloc(*c, *word_indexes*sizeof(*c));
+}
+
+char** increase_word_array_size(char** c, int *word_array_indexes)
+{
+    *word_array_indexes *= 2; 
+    c = checked_realloc(c, *word_array_indexes*sizeof(*c));
+    return c;
+}
+
+//===========================================================================
+// Parser Helper Functions
+//===========================================================================
+
+// Determines whether the given character is a regular character
 bool is_regular_char(int c)
 {
     return ((c >= 'a' && c <= 'z') ||
@@ -136,6 +153,8 @@ bool is_regular_char(int c)
            c == '_');
 }
 
+// Returns the precedence score for the given operator used in creating the
+// command tree
 int get_operator_score(command_t operator)
 {
     int score;
@@ -186,19 +205,7 @@ int get_next_char(read_args read)
     return i;
 }
 
-void increase_word_size(char** c, int *word_indexes)
-{
-    *word_indexes *= 2;
-    *c = checked_realloc(*c, *word_indexes*sizeof(*c));
-}
-
-char** increase_word_array_size(char** c, int *word_array_indexes)
-{
-    *word_array_indexes *= 2; 
-    c = checked_realloc(c, *word_array_indexes*sizeof(*c));
-    return c;
-}
-
+// Retrieves the next regular string from the file stream
 char* get_word(int *first_char, read_args read)
 {
     // If the first character is a space get the next character
@@ -214,7 +221,9 @@ char* get_word(int *first_char, read_args read)
     
     char* new_word = checked_malloc(buf_size*sizeof(char));
 
+    // While the character is a regular character add it to the new word
     while (is_regular_char(*first_char)) {
+
         // If the size of the word has been reached increase the size
         if (counter >= buf_size) {
             increase_word_size(&new_word, &buf_size);
@@ -224,6 +233,7 @@ char* get_word(int *first_char, read_args read)
         counter++;
         *first_char = get_next_char(read);
     }
+
     // Add the null terminated byte to the end
     if (counter >= buf_size) {
         increase_word_size(&new_word, &buf_size);
@@ -234,7 +244,9 @@ char* get_word(int *first_char, read_args read)
     return new_word;
 }
 
-// Don't care about spaces so don't include them
+// Enters a character into the temporary buffer
+// Used for cases where we retrieve the next character but need to use it in
+// another function down the line
 void enter_tmp_buf(int c)
 {
     if (c != ' ' && c != '\t') {
@@ -242,6 +254,7 @@ void enter_tmp_buf(int c)
     }
 }
 
+// Determines whether the command is a pipe command
 bool is_pipe_command(read_args read)
 {
     int i = get_next_char(read); 
@@ -255,26 +268,53 @@ bool is_pipe_command(read_args read)
     }
 }
 
+// Adds the input and output files for the command
 void add_input_output(int *first_char, read_args read, command_t new_command)
 {
-    if (*first_char == '<' || *first_char == '>') {
-        if (*first_char == '<') {
-            *first_char = get_next_char(read);
-            new_command->input = get_word(first_char, read);
-        }
-
+    if (*first_char == '<') {
+        *first_char = get_next_char(read);
+        new_command->input = get_word(first_char, read);
         remove_white_spaces(first_char, read);
-
-        if (*first_char == '>') {
-            *first_char = get_next_char(read);
-            new_command->output = get_word(first_char, read);
-        }
     }
+
+    if (*first_char == '>') {
+        *first_char = get_next_char(read);
+        new_command->output = get_word(first_char, read);
+    }
+}
+
+// Returns true if the command is a and, or, pipe command
+bool is_command(command_t last_command)
+{
+    if (!last_command) {
+        return false;
+    }
+
+    enum command_type type = last_command->type;
+
+    return (type == AND_COMMAND  ||
+           type == OR_COMMAND   ||
+           type == PIPE_COMMAND);
+
+}
+
+//===========================================================================
+// Command Creation Functions
+//===========================================================================
+
+command_t create_command()
+{
+    command_t new_command = checked_malloc(sizeof(*new_command));
+    new_command->status = -1;
+    new_command->input = NULL;
+    new_command->output = NULL;
+    return new_command;
 }
 
 command_t create_pipe_or_command(read_args read)
 {
     command_t new_command = create_command();
+
     if (is_pipe_command(read)) {
         new_command->type = PIPE_COMMAND;
     }else{
@@ -310,6 +350,7 @@ command_t create_simple_command(read_args read, int first_char)
     if (counter >=buffer_size) {
         words = increase_word_array_size(words, &buffer_size);
     }
+
     words[counter] = NULL;
 
     // Remove white spaces
@@ -333,20 +374,20 @@ command_t create_and_command(int i, read_args read)
 
     // Determine if it is an && statement or return error
     i = get_next_char(read);
-    if (i == '&') {
-        new_command->type = AND_COMMAND; 
-    }else{
-        error(1, 0, "%d: Invalid & command", command_line); 
-    }
 
+    if (i == '&')
+        new_command->type = AND_COMMAND; 
+    else
+        error(1, 0, "%d: Invalid & command", command_line); 
+    
     return new_command;
 }
 
 command_t create_subshell_command(int i, read_args read)
 {
     command_t new_command = create_command();
-
     new_command->type = SUBSHELL_COMMAND;
+
     char** word = checked_malloc(sizeof(*word));
     char* w = checked_malloc(sizeof(*w));
     w[0] = i;
@@ -374,22 +415,8 @@ command_t create_sequence_command()
     return new_command;
 }
 
-bool is_command(command_t last_command)
-{
-    if (!last_command) {
-        return false;
-    }
-
-    enum command_type type = last_command->type;
-
-    return (type == AND_COMMAND  ||
-           type == OR_COMMAND   ||
-           type == PIPE_COMMAND);
-
-}
-
-// commmand_before is a boolean used for commentsthat determines whether this
-// comment is at the end of the command or the beginning
+// command_before is a boolean that states whether there was a command before
+// this function call
 command_t get_next_command(read_args read, bool command_before)
 {
     int i;
@@ -438,13 +465,12 @@ command_t get_next_command(read_args read, bool command_before)
             }
         }
 
-        // If i is less than zero then return
+        // If i is less than zero then return because we have reached the end of
+        // the stream
         if (i <=0) {
             return NULL;
         }
 
-        // If i is a regular character then it is a simple command and iterate until
-        // we have the complete simple command
         if (is_regular_char(i)) {
             return create_simple_command(read, i);
         }
@@ -468,46 +494,18 @@ command_t get_next_command(read_args read, bool command_before)
     }
 }
 
-// Function for debugging purposes TODO:Remove later
-void print_command_type(command_t var)
-{
-    switch(var->type)
-    {
-        case SUBSHELL_COMMAND:
-            printf("Subshell\n");
-            break;
-        case SEQUENCE_COMMAND:
-            printf("Sequence\n");
-            break;
-        case OR_COMMAND:
-            printf("Or command\n");
-            break;
-
-        case AND_COMMAND:
-            printf("And command\n");
-            break;
-
-        case PIPE_COMMAND:
-            printf("Pipe command\n");
-            break;
-        case SIMPLE_COMMAND:
-            printf("Simple command\n");
-            break;
-
-    }
-}
 command_t get_next_stream(read_args read, bool* valid_stream)
 {
-    Stack operand_stack = create_stack();
-    Stack operator_stack = create_stack();
+    bool in_subshell = false;
+    bool command_before = false;
 
     command_t curr_command;
 
-    bool in_subshell = false;
-    bool command_before = false;
-    
+    Stack operand_stack = create_stack();
+    Stack operator_stack = create_stack();
+
+    // While we are getting new commands for the current stream
     while ((curr_command = get_next_command(read, command_before))) {
-        // Set the last command
         command_before = true;
         last_command = curr_command;
 
@@ -517,11 +515,10 @@ command_t get_next_stream(read_args read, bool* valid_stream)
         }
         else
         {
-            // If it's a sequence command end getting new commands if we are not
-            // in a subshell
-            if (curr_command->type == SEQUENCE_COMMAND && !in_subshell) {
+            // If it's a sequence command and we are not in a subshell then
+            // break from this loop
+            if (curr_command->type == SEQUENCE_COMMAND && !in_subshell)
                 break;
-            }
             
             // If the operator stack is empty push it onto the operator stack
             if (curr_command->type == SUBSHELL_COMMAND ) 
@@ -529,6 +526,7 @@ command_t get_next_stream(read_args read, bool* valid_stream)
                 // Otherwise if the operator is a left bracket then push it onto the
                 // operator stack
                 char **w = curr_command->u.word;
+
                 if (**w == '(') {
                     in_subshell = true;
                     push_stack(&operator_stack, curr_command);
@@ -538,6 +536,7 @@ command_t get_next_stream(read_args read, bool* valid_stream)
                 // and apply it to the two top elements of the operand stack
                     in_subshell = false;
                     command_t operator_command = pop_stack(&operator_stack);
+
                     while (operator_command->type != SUBSHELL_COMMAND) {
                         command_t right_command = pop_stack(&operand_stack);
                         command_t left_command = pop_stack(&operand_stack);
@@ -616,6 +615,7 @@ command_t get_next_stream(read_args read, bool* valid_stream)
 
     // Determine whether we have reached the end of not
     int i = get_next_char(read);
+
     while (i == ' ' || i == '\t' || i == '\n') {
         i = get_next_char(read);
     }
