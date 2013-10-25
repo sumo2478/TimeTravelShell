@@ -20,6 +20,8 @@ cat n_file
 (cat n_file | cat) && echo first pipe test
 (ls -rexfdjk | cat ) && echo second pipe test
 (cat n_file | ls -rexfjkds) && echo third pipe test
+(echo hello && echo bob) > n_file && echo final
+cat < n_file
 
 rm n_file
 rm other_file

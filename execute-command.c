@@ -188,8 +188,20 @@ void execute_pipe_command(command_t c)
 
 void execute_subshell_command(command_t c)
 {
-    execute_command(c->u.subshell_command);
-    c->status = c->u.subshell_command->status;
+    pid_t pid = fork();
+    int status;
+
+    if (pid == 0) {
+        setup_io(c);
+        execute_command(c->u.subshell_command);
+        _exit(c->u.subshell_command->status);
+    }else if (pid > 0) {
+        waitpid(pid, &status, 0);
+    }else
+        error(1, 0, "Forked process failed");
+
+    c->status = WEXITSTATUS(status);
+
 }
 
 void execute_sequence_command(command_t c)
@@ -258,7 +270,8 @@ FileArray* createFileArray()
 void increase_file_array(FileArray* n)
 {
     n->size *=2;
-    n->files = checked_malloc(n->size*sizeof(*n->files));
+    
+    n->files = checked_realloc(n->files, n->size*sizeof(*n->files));
 }
 
 void insert_file_array(FileArray* array, char* word)
@@ -373,16 +386,32 @@ void list_insert(List* list, Node* node)
     }
 }
 
+void insert_dependencies(command_t command, Node* n)
+{
+    if (command->input != NULL)
+        insert_file_array(n->in_files, command->input);
+    if (command->output != NULL)
+        insert_file_array(n->out_files, command->output);
+    
+    if (command->type == SIMPLE_COMMAND) {
+        char* word = command->u.word[1];
+        int index = 1;
+
+        while (word != NULL) {
+            insert_file_array(n->in_files, word);
+            index++;
+            word = command->u.word[index];
+        }
+    }
+}
+
 void determine_dependencies(command_t command, Node* n)
 {
     // Code for determining the input
     switch(command->type)
     {
         case SIMPLE_COMMAND:
-            if (command->input != NULL)
-                insert_file_array(n->in_files, command->input);
-            if (command->output != NULL)
-                insert_file_array(n->out_files, command->output);
+            insert_dependencies(command, n);
             break;
 
         case AND_COMMAND:
@@ -394,6 +423,7 @@ void determine_dependencies(command_t command, Node* n)
             break;
 
         case SUBSHELL_COMMAND:
+            insert_dependencies(command, n);
             determine_dependencies(command->u.subshell_command, n);
             break;
     }

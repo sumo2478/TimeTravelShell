@@ -255,6 +255,23 @@ bool is_pipe_command(read_args read)
     }
 }
 
+void add_input_output(int *first_char, read_args read, command_t new_command)
+{
+    if (*first_char == '<' || *first_char == '>') {
+        if (*first_char == '<') {
+            *first_char = get_next_char(read);
+            new_command->input = get_word(first_char, read);
+        }
+
+        remove_white_spaces(first_char, read);
+
+        if (*first_char == '>') {
+            *first_char = get_next_char(read);
+            new_command->output = get_word(first_char, read);
+        }
+    }
+}
+
 command_t create_pipe_or_command(read_args read)
 {
     command_t new_command = create_command();
@@ -299,19 +316,7 @@ command_t create_simple_command(read_args read, int first_char)
     remove_white_spaces(&first_char, read);
 
     // Determine if there is an input/output redirect after the simple command
-    if (first_char == '<' || first_char == '>') {
-        if (first_char == '<') {
-            first_char = get_next_char(read);
-            new_command->input = get_word(&first_char, read);
-        }
-
-        remove_white_spaces(&first_char, read);
-
-        if (first_char == '>') {
-            first_char = get_next_char(read);
-            new_command->output = get_word(&first_char, read);
-        }
-    }
+    add_input_output(&first_char, read, new_command);
 
     // Restore the last element to use later if necessary
     enter_tmp_buf(first_char);
@@ -337,7 +342,7 @@ command_t create_and_command(int i, read_args read)
     return new_command;
 }
 
-command_t create_subshell_command(int i)
+command_t create_subshell_command(int i, read_args read)
 {
     command_t new_command = create_command();
 
@@ -348,6 +353,17 @@ command_t create_subshell_command(int i)
     word[0] = w;
 
     new_command->u.word = word;
+
+    // Determine if there is an input/output redirect after the subshell command
+    if (i == ')') {
+        int c;
+        c = get_next_char(read);
+        remove_white_spaces(&c, read);
+        add_input_output(&c, read, new_command);
+        
+        enter_tmp_buf(c);
+    }
+
     return new_command;
 }
 
@@ -443,7 +459,7 @@ command_t get_next_command(read_args read, bool command_before)
         }
         else if (i == '(' || i == ')')
         {
-            return create_subshell_command(i);
+            return create_subshell_command(i, read);
         }else
         {
             error(1, 0, "%d: Unrecognized symbol received - \'%c\'", command_line, i);
@@ -540,8 +556,8 @@ command_t get_next_stream(read_args read, bool* valid_stream)
                 // Then attach the top of the operand to the SUBSHELL COMMAND
                 // and place it back on to the operand stack
                     command_t operand_command = pop_stack(&operand_stack);
-                    operator_command->u.subshell_command = operand_command;
-                    push_stack(&operand_stack, operator_command);
+                    curr_command->u.subshell_command = operand_command;
+                    push_stack(&operand_stack, curr_command);
                 }
             }
             else if (stack_empty(operator_stack)) 
